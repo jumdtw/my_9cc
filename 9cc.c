@@ -26,7 +26,7 @@ typedef struct{
     int val;
 }Node;
 
-Node *add();
+Node *expr();
 
 //トークンない図した結果のトークン列はこの配列に保存する
 //100個以上のトークンはこないものとする
@@ -56,9 +56,9 @@ int consume(int ty){
     return 1;
 }
 
-Node *term(){
+Node *primary(){
     if(consume('(')){
-        Node *node = add();
+        Node *node = expr();
         if(!consume(')')){
             error(pos);
         }
@@ -70,21 +70,31 @@ Node *term(){
     error(pos);
 }
 
+Node *unary(){
+    if(consume('+')){
+        return primary();
+    }
+    if(consume('-')){
+        return new_node('-',new_node_num(0),primary());
+    }
+    return primary();
+}
+
 Node *mul(){
-    Node *node = term();
+    Node *node = unary();
 
     for(;;){
         if(consume('*')){
-            node = new_node('*',node,term());
+            node = new_node('*',node,unary());
         }else if(consume('/')){
-            node = new_node('/',node,term());
+            node = new_node('/',node,unary());
         }else{
             return node;
         }
     }
 }
 
-Node *add(){
+Node *expr(){
     Node *node = mul();
 
     for(;;){
@@ -177,7 +187,7 @@ int main(int argc,char **argv){
     
     //トークンナイズ
     tokenize(argv[1]);
-    Node *node = add();
+    Node *node = expr();
 
     printf(".intel_syntax noprefix\n");
     printf(".global main\n");
