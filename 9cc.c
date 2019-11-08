@@ -19,12 +19,14 @@ enum{
     ND_NUM = 256,
 };
 
-typedef struct{
+typedef struct Node Node;
+
+struct Node{
     int ty;
-    struct Node *lhs;
-    struct Node *rhs;
+    Node *lhs;
+    Node *rhs;
     int val;
-}Node;
+};
 
 Node *expr();
 
@@ -59,15 +61,14 @@ int consume(int ty){
 Node *primary(){
     if(consume('(')){
         Node *node = expr();
-        if(!consume(')')){
-            error(pos);
+        if(consume(')')){
+            return node;
         }
-        return node;
     }
     if(tokens[pos].ty == TK_NUM){
         return new_node_num(tokens[pos++].val);
     }
-    error(pos);
+    
 }
 
 Node *unary(){
