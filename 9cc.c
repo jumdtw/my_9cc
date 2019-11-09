@@ -13,10 +13,15 @@ typedef struct {
     int ty;         //トークン型
     int val;        //tyがTK_NUMの場合、その数値
     char *input;    //トークン文字列
+    int len;
 }Token;
 
 enum{
-    ND_NUM = 256,
+    ND_ADD,
+    ND_SUB,
+    ND_MUL,
+    ND_DIV,
+    ND_NUM,
 };
 
 typedef struct Node Node;
@@ -72,11 +77,11 @@ Node *primary(){
 }
 
 Node *unary(){
-    if(consume('+')){
+    if(consume(ND_ADD)){
         return primary();
     }
-    if(consume('-')){
-        return new_node('-',new_node_num(0),primary());
+    if(consume(ND_SUB)){
+        return new_node(ND_SUB,new_node_num(0),primary());
     }
     return primary();
 }
@@ -85,10 +90,10 @@ Node *mul(){
     Node *node = unary();
 
     for(;;){
-        if(consume('*')){
-            node = new_node('*',node,unary());
-        }else if(consume('/')){
-            node = new_node('/',node,unary());
+        if(consume(ND_MUL)){
+            node = new_node(ND_MUL,node,unary());
+        }else if(consume(ND_DIV)){
+            node = new_node(ND_DIV,node,unary());
         }else{
             return node;
         }
@@ -99,10 +104,10 @@ Node *expr(){
     Node *node = mul();
 
     for(;;){
-        if(consume('+')){
-            node = new_node('+',node,mul());
-        }else if(consume('-')){
-            node = new_node('-',node,mul());
+        if(consume(ND_ADD)){
+            node = new_node(ND_ADD,node,mul());
+        }else if(consume(ND_SUB)){
+            node = new_node(ND_SUB,node,mul());
         }else{
             return node;
         }
@@ -124,16 +129,16 @@ void gen(Node *node){
     printf("    pop rax\n");
 
     switch(node->ty){
-        case '+':
+        case ND_ADD:
             printf("    add rax, rdi\n");
             break;
-        case '-':
+        case ND_SUB:
             printf("    sub rax ,rdi\n");
             break;
-        case '*':
+        case ND_MUL:
             printf("    mul rdi\n");
             break;
-        case '/':
+        case ND_DIV:
             printf("    mov rdx, 0\n");
             printf("    div rdi\n");
             break;
@@ -151,8 +156,35 @@ void tokenize(char *p){
             p++;
             continue;
         }
-        //
-        if(*p == '+' || *p == '-' || *p == '*' || *p == '/' || *p == '(' || *p == ')'){
+        if(*p=='+'){
+            tokens[i].ty = ND_ADD;
+            tokens[i].input = p;
+            i++;
+            p++;
+            continue;
+        }
+        if(*p=='-'){
+            tokens[i].ty = ND_SUB;
+            tokens[i].input = p;
+            i++;
+            p++;
+            continue;
+        }
+        if(*p=='*'){
+            tokens[i].ty = ND_MUL;
+            tokens[i].input = p;
+            i++;
+            p++;
+            continue;
+        }
+        if(*p=='/'){
+            tokens[i].ty = ND_DIV;
+            tokens[i].input = p;
+            i++;
+            p++;
+            continue;
+        }
+        if(*p == '(' || *p == ')'){
             tokens[i].ty = *p;
             tokens[i].input = p;
             i++;
