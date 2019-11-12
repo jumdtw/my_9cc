@@ -2,6 +2,9 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include<string.h>
+#include<vector>
+
+
 
 enum {
     TK_NUM = 256,  //整数トークン
@@ -12,17 +15,26 @@ enum {
 typedef struct {
     int ty;         //トークン型
     int val;        //tyがTK_NUMの場合、その数値
-    char *input;    //トークン文字列
+    char *str;    //トークン文字列
     int len;
 }Token;
 
 enum{
-    ND_ADD,
-    ND_SUB,
-    ND_MUL,
-    ND_DIV,
     ND_NUM,
+    // 比較演算
+    ND_SETE,  // ==
+    ND_SETL,  // <
+    ND_SETLE, // <=
+    ND_SETNE, // !=
 };
+// 四則演算
+#define ND_ADD "+"
+#define ND_SUB "+"
+#define ND_MUL "+"
+#define ND_DIV "+"
+#define ND_PARENR "("
+#define ND_PARENL ")"
+
 
 typedef struct Node Node;
 
@@ -37,11 +49,11 @@ Node *expr();
 
 //トークンない図した結果のトークン列はこの配列に保存する
 //100個以上のトークンはこないものとする
-Token tokens[100];
+std::vector<Token> tokens;
 int pos = 0;
 
 Node *new_node(int ty,Node *lhs, Node *rhs){
-    Node *node = malloc(sizeof(Node));
+    Node *node = (Node *)malloc(sizeof(Node));
     node->ty = ty;
     node->lhs = lhs;
     node->rhs = rhs;
@@ -49,39 +61,40 @@ Node *new_node(int ty,Node *lhs, Node *rhs){
 }
 
 Node *new_node_num(int val){
-    Node *node = malloc(sizeof(Node));
+    Node *node = (Node *)malloc(sizeof(Node));
     node->ty = ND_NUM;
     node->val = val;
     return node;
 }
 
-int consume(int ty){
-    if(tokens[pos].ty != ty){
-        return 0;
+bool consume(char *op){
+    if(memcmp(tokens[pos].str,op,tokens[pos].len)){
+        return false;
     }
+    //printf("tokens.ty == : %d\n" ,tokens[pos].ty);
     pos++;
-    return 1;
+    return true;
 }
 
 Node *primary(){
-    if(consume('(')){
+    if(consume((char*)"(")){
         Node *node = expr();
-        if(consume(')')){
+        if(consume((char*)")")){
             return node;
         }
     }
-    if(tokens[pos].ty == TK_NUM){
-        return new_node_num(tokens[pos++].val);
-    }
+
+    return new_node_num(tokens[pos++].val);
+    
     
 }
 
 Node *unary(){
-    if(consume(ND_ADD)){
+    if(consume((char*)"+")){
         return primary();
     }
-    if(consume(ND_SUB)){
-        return new_node(ND_SUB,new_node_num(0),primary());
+    if(consume((char*)"-")){
+        return new_node('-',new_node_num(0),primary());
     }
     return primary();
 }
@@ -90,10 +103,10 @@ Node *mul(){
     Node *node = unary();
 
     for(;;){
-        if(consume(ND_MUL)){
-            node = new_node(ND_MUL,node,unary());
-        }else if(consume(ND_DIV)){
-            node = new_node(ND_DIV,node,unary());
+        if(consume((char*)"*")){
+            node = new_node('*',node,unary());
+        }else if(consume((char*)"/")){
+            node = new_node('/',node,unary());
         }else{
             return node;
         }
@@ -104,10 +117,10 @@ Node *expr(){
     Node *node = mul();
 
     for(;;){
-        if(consume(ND_ADD)){
-            node = new_node(ND_ADD,node,mul());
-        }else if(consume(ND_SUB)){
-            node = new_node(ND_SUB,node,mul());
+        if(consume((char*)"+")){
+            node = new_node('+',node,mul());
+        }else if(consume((char*)"-")){
+            node = new_node('-',node,mul());
         }else{
             return node;
         }
@@ -129,18 +142,38 @@ void gen(Node *node){
     printf("    pop rax\n");
 
     switch(node->ty){
-        case ND_ADD:
+        case '+':
             printf("    add rax, rdi\n");
             break;
-        case ND_SUB:
+        case '-':
             printf("    sub rax ,rdi\n");
             break;
-        case ND_MUL:
+        case '*':
             printf("    mul rdi\n");
             break;
-        case ND_DIV:
+        case '/':
             printf("    mov rdx, 0\n");
             printf("    div rdi\n");
+            break;
+        case ND_SETE: // == 
+            printf("    cmp rax, rdi\n");
+            printf("    sete al\n");
+            printf("    movzb rax, al\n");
+            break;
+        case ND_SETL:  // <
+            printf("    cmp rax, rdi\n");
+            printf("    setl al\n");
+            printf("    movzb rax, al\n");
+            break;
+        case ND_SETLE: // <=
+            printf("    cmp rax, rdi\n");
+            printf("    setle al\n");
+            printf("    movzb rax, al\n");
+            break;
+        case ND_SETNE: // !=
+            printf("    cmp rax, rdi\n");
+            printf("    setne al\n");
+            printf("    movzb rax, al\n");
             break;
     }
 
@@ -150,67 +183,70 @@ void gen(Node *node){
 //pが指名しているボジ列をトークンに分割してtokensに保存する
 void tokenize(char *p){
     int i = 0;
+    Token end;
+    char sete[] = "==",setne[] = "!=",setle[] = "<=";
     while(*p){
+        Token token;
         //空白文字をスキップ
         if(isspace(*p)){
             p++;
             continue;
         }
-        if(*p=='+'){
-            tokens[i].ty = ND_ADD;
-            tokens[i].input = p;
-            i++;
+        // arr1 == arr2 の時の戻り値が０
+        // == 
+        if(!memcmp(sete,p,2)){    
+            token.ty = ND_SETE;
+            token.str = p;
+            token.len = 2;
+            tokens.push_back(token);
             p++;
             continue;
         }
-        if(*p=='-'){
-            tokens[i].ty = ND_SUB;
-            tokens[i].input = p;
-            i++;
+        // !=
+        if(!memcmp(setne,p,2)){    
+            token.ty = ND_SETNE;
+            token.str = p;
+            token.len = 2;
+            tokens.push_back(token);
             p++;
             continue;
         }
-        if(*p=='*'){
-            tokens[i].ty = ND_MUL;
-            tokens[i].input = p;
-            i++;
+        // <=
+        if(!memcmp(setle,p,2)){    
+            token.ty = ND_SETLE;
+            token.str = p;
+            token.len = 2;
+            tokens.push_back(token);
             p++;
             continue;
         }
-        if(*p=='/'){
-            tokens[i].ty = ND_DIV;
-            tokens[i].input = p;
-            i++;
-            p++;
-            continue;
-        }
-        if(*p == '(' || *p == ')'){
-            tokens[i].ty = *p;
-            tokens[i].input = p;
-            i++;
+        
+        if(*p == '(' || *p == ')' || *p=='+' || *p=='-' || *p=='*' || *p=='/' || *p=='<' || *p=='>'){    
+            token.ty = *p;
+            token.str = p;
+            token.len = 1;
+            tokens.push_back(token);
             p++;
             continue;
         }
         //10進数の数字であるか否か
         if(isdigit(*p)){
-            tokens[i].ty = TK_NUM;
-            tokens[i].input = p;
-            tokens[i].val = strtol(p,&p,10);
-            i++;
+            token.ty = TK_NUM;
+            token.str = p;
+            token.val = strtol(p,&p,10);
+            tokens.push_back(token);
             continue;
         }
 
         fprintf(stderr,"トークンナイズできません: %s\n",p);
         exit(1);
     }
-    tokens[i].ty = TK_EOF;
-    tokens[i].input = p;
+    end.ty = TK_EOF;
+    end.str = p;
+    tokens.push_back(end);
+    
 }
 
-void error(int i){
-    fprintf(stderr,"予期しないトークンです: %s\n",tokens[i].input);
-    exit(1);
-}
 
 int main(int argc,char **argv){
     if(argc != 2){
@@ -220,6 +256,7 @@ int main(int argc,char **argv){
     
     //トークンナイズ
     tokenize(argv[1]);
+
     Node *node = expr();
 
     printf(".intel_syntax noprefix\n");
