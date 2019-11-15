@@ -16,14 +16,6 @@ enum {
     TK_EOF,        //入力の終わりを表すトークン
 };
 
-
-typedef struct {
-    int ty;         //トークン型
-    int val;        //tyがTK_NUMの場合、その数値
-    char *str;    //トークン文字列
-    int len;
-}Token;
-
 enum{
     ND_NUM,
     // 比較演算
@@ -35,16 +27,10 @@ enum{
     ND_SETLE, // <=
     ND_SETNE, // !=
 };
-// 四則演算
-#define ND_ADD "+"
-#define ND_SUB "-"
-#define ND_MUL "*"
-#define ND_DIV "/"
-#define ND_PARENR "("
-#define ND_PARENL ")"
 
 
 typedef struct Node Node;
+typedef struct LVar LVar;
 
 struct Node{
     int ty;
@@ -55,13 +41,39 @@ struct Node{
     char *str;
 };
 
+typedef struct {
+    int ty;         //トークン型
+    int val;        //tyがTK_NUMの場合、その数値
+    char *str;    //トークン文字列
+    int len;
+}Token;
+
+struct LVar{
+    LVar *next; 
+    char *name; //変数名
+    int len;    //name.len()
+    int offset; //
+};
+
 Node *expr();
 
 // tokenizeの結果がここに入る
 std::vector<Token> tokens;
 // 構文木がここにはいっている
 std::vector<Node*> code;
+LVar *locals = NULL;
 int pos = 0;
+
+
+LVar *find_lvar(Token *tok){
+    for(LVar *var=locals;var;var=var->next){
+        if(var->len==tok->len&&!memcmp(tok->str,var->name,var->len)){
+            return var;
+        }
+    }
+    return NULL;
+}
+
 
 Node *new_node(int ty,Node *lhs, Node *rhs){
     Node *node = (Node *)malloc(sizeof(Node));
@@ -110,14 +122,34 @@ Node *primary(){
         return new_node_num(tokens[pos++].val);
     }
     
+    if(tokens[pos].ty==TK_IDENT){
 
-    if(tokens[pos].ty == TK_IDENT){
         Node *node = (Node*)malloc(sizeof(Node));
         node->ty = ND_LVAR;
-        node->offset = (tokens[pos++].str[0] - 'a' + 1) * 8;
+        LVar *lvar = find_lvar(&tokens[pos]);
+
+        if(lvar){
+            node->offset = lvar->offset;
+        }else{
+            lvar = (LVar*)malloc(sizeof(LVar));
+            lvar->next = locals;
+            lvar->name = tokens[pos].str;
+            lvar->len = tokens[pos].len;\
+            if(locals==NULL){
+                lvar->offset = 8;
+            }else{
+                lvar->offset = locals->offset + 8;
+            }
+            node->offset = lvar->offset;
+            locals = lvar;
+        }
+        pos++;
         return node;
     }
-    
+
+    printf("error primary\n");
+    exit(1);
+
 }
 
 Node *unary(){
@@ -303,6 +335,18 @@ void gen(Node *node){
     printf("    push rax\n");
 }
 
+int lvar_len(char *p){
+    int len = 0;
+    for(;;){
+        if(('a' <= *p && *p <= 'z')||('A'<=*p && *p<='Z'||'0'<=*p && *p <= '9')){
+            p++;
+            len++;
+        }else{
+            return len;
+        }
+    }
+}
+
 //pが指名しているボジ列をトークンに分割してtokensに保存する
 void tokenize(char *p){
     int i = 0;
@@ -364,15 +408,13 @@ void tokenize(char *p){
         if('a' <= *p && *p <= 'z'){
             token.ty = TK_IDENT;
             token.str = p;
-            token.len = 1;
+            token.len = lvar_len(p);
+            p += token.len;  // ここでたしてあげないと文字数分ずれない。
             tokens.push_back(token);
-            p++;
             continue;
         }
 
-        if(*p == ';'){
-            
-        }
+
         
 
         fprintf(stderr,"トークンナイズできません: %s\n",p);

@@ -34,7 +34,8 @@ try 0 "5<=(-5+4);"
 try 0 "(-5+4)>=5;"
 try 1 "1==1;"
 try 1 "1!=0;"
-try 72 "b = 8*9;"
+try 72 "b=8*9;"
 try 42 "a = 6*7;"
-
+try 9 "b = 18;b-9;"
+try 9 "jum = 18;dtw = 9; jum - dtw;"
 echo OK
