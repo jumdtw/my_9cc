@@ -8,6 +8,7 @@
 
 enum {
     TK_NUM = 256,  //整数トークン
+    TK_RETURN,
     TK_IDENT,     // 識別子
     TK_SETE,  // ==
     TK_SETL,  // <
@@ -20,6 +21,7 @@ enum{
     ND_NUM,
     // 比較演算
     ND_ASSIGN,
+    ND_RETURN,
     ND_IDENT,
     ND_LVAR,
     ND_SETE,  // ==
@@ -146,10 +148,6 @@ Node *primary(){
         pos++;
         return node;
     }
-
-    printf("error primary\n");
-    exit(1);
-
 }
 
 Node *unary(){
@@ -242,7 +240,16 @@ Node *expr(){
 
 
 Node *stmt(){
-    Node *node = expr();
+    Node *node;
+    if(tokens[pos].ty==TK_RETURN){
+        node = (Node*)malloc(sizeof(Node));
+        node->ty = ND_RETURN;
+        pos++;
+        node->lhs = expr();
+    }else{
+        node = expr();
+    }
+
     expect((char*)";");
     pos++;
     return node;
@@ -268,6 +275,14 @@ void gen_lval(Node *node){
 
 
 void gen(Node *node){
+    if(node->ty == ND_RETURN){
+        gen(node->lhs);
+        printf("    pop rax\n");
+        printf("    mov rsp, rbp\n");
+        printf("    pop rbp\n");
+        printf("    ret\n");
+        return;
+    }
     if(node->ty == ND_NUM){
         printf("    push %d\n",node->val);
         return;
@@ -347,6 +362,14 @@ int lvar_len(char *p){
     }
 }
 
+int is_alnum(char c){
+    return  ('a' <= c && c <= 'z') ||
+            ('A' <= c && c <= 'Z') ||
+            ('0' <= c && c <= '9') ||
+            (c == '_');
+
+}
+
 //pが指名しているボジ列をトークンに分割してtokensに保存する
 void tokenize(char *p){
     int i = 0;
@@ -405,6 +428,14 @@ void tokenize(char *p){
             continue;
         }
 
+        if(strncmp(p,"return",6)==0&&!is_alnum(p[6])){
+            token.ty = TK_RETURN;
+            token.str = p;
+            p+=6;
+            tokens.push_back(token);
+            continue;
+        }
+
         if('a' <= *p && *p <= 'z'){
             token.ty = TK_IDENT;
             token.str = p;
@@ -414,8 +445,6 @@ void tokenize(char *p){
             continue;
         }
 
-
-        
 
         fprintf(stderr,"トークンナイズできません: %s\n",p);
         exit(1);
@@ -457,13 +486,7 @@ int main(int argc,char **argv){
     // 抽象構文木を下りながらコード生成
     for(int i=0;code[i];i++){
         gen(code[i]);
-        printf("    pop rax\n");
     }
 
-    // スタックトップに式全体の値が残っているはずなので
-    // それをRAXにロードして関数からの返り値とする
-    printf("    mov rsp, rbp\n");
-    printf("    pop rbp\n");
-    printf("    ret\n");
     return 0;
 }
