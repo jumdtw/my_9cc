@@ -1,6 +1,7 @@
 #include<ctype.h>
 #include<stdio.h>
 #include<stdlib.h>
+#include<time.h>
 #include<string.h>
 #include<vector>
 
@@ -9,6 +10,9 @@
 enum {
     TK_NUM = 256,  //整数トークン
     TK_RETURN,
+    TK_IF,
+    TK_ELSE,
+    TK_WHILE,
     TK_IDENT,     // 識別子
     TK_SETE,  // ==
     TK_SETL,  // <
@@ -22,8 +26,12 @@ enum{
     // 比較演算
     ND_ASSIGN,
     ND_RETURN,
+    ND_IF,
+    ND_ELSE,
+    ND_WHILE,
     ND_IDENT,
     ND_LVAR,
+    ND_BLOCK,
     ND_SETE,  // ==
     ND_SETL,  // <
     ND_SETLE, // <=
@@ -38,6 +46,7 @@ struct Node{
     int ty;
     Node *lhs;
     Node *rhs;
+    std::vector<Node*> stmts;
     int val;
     int offset;
     char *str;
@@ -136,7 +145,7 @@ Node *primary(){
             lvar = (LVar*)malloc(sizeof(LVar));
             lvar->next = locals;
             lvar->name = tokens[pos].str;
-            lvar->len = tokens[pos].len;\
+            lvar->len = tokens[pos].len;
             if(locals==NULL){
                 lvar->offset = 8;
             }else{
@@ -241,15 +250,60 @@ Node *expr(){
 
 Node *stmt(){
     Node *node;
+
     if(tokens[pos].ty==TK_RETURN){
         node = (Node*)malloc(sizeof(Node));
         node->ty = ND_RETURN;
         pos++;
         node->lhs = expr();
-    }else{
-        node = expr();
+        expect((char*)";");
+        pos++;
+        return node;
+    }
+    
+    if(tokens[pos].ty==TK_IF){
+        pos++;
+        if(consume((char*)"(")){
+            node = (Node*)malloc(sizeof(Node));
+            node->ty = ND_IF;
+            node->lhs = expr();
+            if(consume((char*)")")){
+                Node *else_node = stmt();
+                if(tokens[pos].ty==TK_ELSE){
+                    pos++;
+                    node->rhs = new_node(ND_ELSE,else_node,stmt());
+                    return node;
+                }
+                node->rhs = else_node;
+                return node; 
+            }
+        }
     }
 
+    if(tokens[pos].ty==TK_WHILE){
+        pos++;
+        if(consume((char*)"(")){
+            node = (Node*)malloc(sizeof(Node));
+            node->ty = ND_WHILE;
+            node->lhs = expr();
+            if(consume((char*)")")){
+                node->rhs = stmt();
+                return node; 
+            }
+        }
+    }
+    
+    if(consume((char*)"{")){
+        node = (Node*)malloc(sizeof(Node));
+        node->ty = ND_BLOCK;
+        while(!consume((char*)"}")){
+            node->stmts.push_back(stmt());
+        }
+        return node;
+    }
+    
+    
+    node = expr();
     expect((char*)";");
     pos++;
     return node;
@@ -275,6 +329,12 @@ void gen_lval(Node *node){
 
 
 void gen(Node *node){
+    if(node->ty==ND_BLOCK){
+        for(int i=0;i<node->stmts.size();i++){
+            gen(node->stmts[i]);
+        }
+        return;
+    }
     if(node->ty == ND_RETURN){
         gen(node->lhs);
         printf("    pop rax\n");
@@ -283,6 +343,41 @@ void gen(Node *node){
         printf("    ret\n");
         return;
     }
+    if(node->ty == ND_IF){
+        srand((unsigned int)time(NULL));
+        int L = rand()%10000;
+        gen(node->lhs);
+        printf("    pop rax\n");
+        printf("    cmp rax, 0\n");
+        
+        if(node->rhs->ty==ND_ELSE){
+            printf("    je  .%delse\n",L);
+            gen(node->rhs->lhs);
+            printf("    jmp .%dend\n",L);
+            printf(".%delse:\n",L);
+            gen(node->rhs->rhs);
+        }else{
+            printf("    je  .%dend\n",L);
+            gen(node->rhs);
+        }
+        printf(".%dend:\n",L);
+        return;
+    }
+
+    if(node->ty == ND_WHILE){
+        srand((unsigned int)time(NULL));
+        int L = rand()%10000;
+        printf(".%dbegin:\n",L);
+        gen(node->lhs);
+        printf("    pop rax\n");
+        printf("    cmp rax, 0\n");
+        printf("    je  .%dend\n",L);
+        gen(node->rhs);
+        printf("    jmp .%dbegin\n",L);
+        printf(".%dend:\n",L);
+        return;
+    }
+
     if(node->ty == ND_NUM){
         printf("    push %d\n",node->val);
         return;
@@ -295,7 +390,6 @@ void gen(Node *node){
     }else if(node->ty==ND_ASSIGN){
         gen_lval(node->lhs);
         gen(node->rhs);
-
         printf("    pop rdi\n");
         printf("    pop rax\n");
         printf("    mov [rax], rdi\n");
@@ -411,7 +505,7 @@ void tokenize(char *p){
             continue;
         }
         
-        if(*p == '(' || *p == ')' || *p=='+' || *p=='-' || *p=='*' || *p=='/' || *p=='<' || *p=='>' || *p=='=' || *p == ';'){    
+        if(*p == '(' || *p == ')' || *p=='+' || *p=='-' || *p=='*' || *p=='/' || *p=='<' || *p=='>' || *p=='=' || *p == ';' || *p=='{' || *p=='}'){    
             token.ty = *p;
             token.str = p;
             token.len = 1;
@@ -428,6 +522,7 @@ void tokenize(char *p){
             continue;
         }
 
+        // return文の判別
         if(strncmp(p,"return",6)==0&&!is_alnum(p[6])){
             token.ty = TK_RETURN;
             token.str = p;
@@ -436,6 +531,32 @@ void tokenize(char *p){
             continue;
         }
 
+        //if文の判別
+        if(strncmp(p,"if",2)==0&&!is_alnum(p[2])){
+            token.ty = TK_IF;
+            token.str = p;
+            p+=2;
+            tokens.push_back(token);
+            continue;
+        }
+        //else文の判別
+        if(strncmp(p,"else",4)==0&&!is_alnum(p[4])){
+            token.ty = TK_ELSE;
+            token.str = p;
+            p+=4;
+            tokens.push_back(token);
+            continue;
+        }
+        //while文の判別
+        if(strncmp(p,"while",5)==0&&!is_alnum(p[5])){
+            token.ty = TK_WHILE;
+            token.str = p;
+            p+=5;
+            tokens.push_back(token);
+            continue;
+        }
+        
+        //変数の判別
         if('a' <= *p && *p <= 'z'){
             token.ty = TK_IDENT;
             token.str = p;
@@ -474,7 +595,7 @@ int main(int argc,char **argv){
     */
 
     program();
-
+    
     printf(".intel_syntax noprefix\n");
     printf(".global main\n");
     printf("main:\n");

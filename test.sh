@@ -19,6 +19,7 @@ try(){
 try 0 "return 0;"
 try 42 "return 42;"
 try 21 "return 5+20-4;"
+try 27 "return 3*3*3;"
 try 41 "return 12 + 34 -5;"
 try 47 "return 5 + 6 * 7;"
 try 15 "return 5 * ( 9 - 6);"
@@ -38,4 +39,10 @@ try 72 "return b=8*9;"
 try 42 "return a = 6*7;"
 try 9 "b = 18;return b-9;"
 try 9 "jum = 18;dtw = 9;return jum - dtw;"
+try 9 "if(1) return 9;"
+try 9 "if(0) return 1; else return 9;"
+try 9 "if(2>1) return 9;"
+try 10 "b = 10;p = 9;while(p)p=p-1;return b;"
+try 9 "{b = 18;return b-9;}"
+
 echo OK
