@@ -29,7 +29,7 @@ enum{
     ND_IF,
     ND_ELSE,
     ND_WHILE,
-    ND_IDENT,
+    ND_FUNC,
     ND_LVAR,
     ND_BLOCK,
     ND_SETE,  // ==
@@ -50,6 +50,7 @@ struct Node{
     int val;
     int offset;
     char *str;
+    int len;
 };
 
 typedef struct {
@@ -134,8 +135,24 @@ Node *primary(){
     }
     
     if(tokens[pos].ty==TK_IDENT){
-
         Node *node = (Node*)malloc(sizeof(Node));
+
+        // 関数呼び出し
+        char cl[] = "(",cr[] = ")";
+        if(!memcmp(tokens[pos+1].str,cl,1)){
+            // IDENT and cl plus
+            node->ty = ND_FUNC;
+            node->str = tokens[pos].str;
+            node->len = tokens[pos].len;
+            pos+=2;
+            if(!memcmp(tokens[pos].str,cr,1)){
+                pos++;
+                return node;
+            }
+            printf("error function call\n");
+        }
+
+        // 変数呼び出し
         node->ty = ND_LVAR;
         LVar *lvar = find_lvar(&tokens[pos]);
 
@@ -329,12 +346,18 @@ void gen_lval(Node *node){
 
 
 void gen(Node *node){
+    if(node->ty==ND_FUNC){
+        printf("    call _Z3%.*sv\n",node->len,node->str);
+        return;
+    }
+    
     if(node->ty==ND_BLOCK){
         for(int i=0;i<node->stmts.size();i++){
             gen(node->stmts[i]);
         }
         return;
     }
+    
     if(node->ty == ND_RETURN){
         gen(node->lhs);
         printf("    pop rax\n");
@@ -343,6 +366,7 @@ void gen(Node *node){
         printf("    ret\n");
         return;
     }
+    
     if(node->ty == ND_IF){
         srand((unsigned int)time(NULL));
         int L = rand()%10000;
@@ -363,7 +387,7 @@ void gen(Node *node){
         printf(".%dend:\n",L);
         return;
     }
-
+    
     if(node->ty == ND_WHILE){
         srand((unsigned int)time(NULL));
         int L = rand()%10000;
@@ -377,7 +401,7 @@ void gen(Node *node){
         printf(".%dend:\n",L);
         return;
     }
-
+    
     if(node->ty == ND_NUM){
         printf("    push %d\n",node->val);
         return;
@@ -600,14 +624,17 @@ int main(int argc,char **argv){
     printf(".global main\n");
     printf("main:\n");
 
+    
     printf("    push rbp\n");
     printf("    mov rbp, rsp\n");
     printf("    sub rsp, 208\n");
+    
 
     // 抽象構文木を下りながらコード生成
     for(int i=0;code[i];i++){
         gen(code[i]);
     }
+    
 
     return 0;
 }

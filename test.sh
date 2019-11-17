@@ -44,5 +44,13 @@ try 9 "if(0) return 1; else return 9;"
 try 9 "if(2>1) return 9;"
 try 10 "b = 10;p = 9;while(p)p=p-1;return b;"
 try 9 "{b = 18;return b-9;}"
+try 1 "
+b = 10;
+p = 9;
+while(p){
+    p=p-1;
+    b=b-1;
+}
+return b;"
 
 echo OK
