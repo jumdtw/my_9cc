@@ -30,6 +30,7 @@ enum{
     ND_ELSE,
     ND_WHILE,
     ND_FUNC,
+    ND_FUNC_DEFINE,
     ND_LVAR,
     ND_BLOCK,
     ND_SETE,  // ==
@@ -41,6 +42,7 @@ enum{
 
 typedef struct Node Node;
 typedef struct LVar LVar;
+typedef struct LFunc LFunc;
 
 struct Node{
     int ty;
@@ -67,13 +69,22 @@ struct LVar{
     int offset; //
 };
 
+struct LFunc{
+    char *name;
+    int len;
+    // 構文木がここにはいっている
+    std::vector<Node*> code;
+};
+
 Node *expr();
+Node *stmt();
 
 // tokenizeの結果がここに入る
 std::vector<Token> tokens;
-// 構文木がここにはいっている
-std::vector<Node*> code;
+// ローカル関数リスト
 LVar *locals = NULL;
+// 関数リスト
+std::vector<LFunc*> funcs;
 int pos = 0;
 
 
@@ -81,6 +92,16 @@ LVar *find_lvar(Token *tok){
     for(LVar *var=locals;var;var=var->next){
         if(var->len==tok->len&&!memcmp(tok->str,var->name,var->len)){
             return var;
+        }
+    }
+    return NULL;
+}
+
+LFunc *find_func(Token *tok){
+    for(int i=0;i<funcs.size();i++){
+        LFunc *func = funcs[i];
+        if(func->len==tok->len&&!memcmp(tok->str,func->name,func->len)){
+            return func;
         }
     }
     return NULL;
@@ -94,7 +115,7 @@ Node *new_node(int ty,Node *lhs, Node *rhs){
     node->rhs = rhs;
     return node;
 }
-
+ 
 Node *new_node_num(int val){
     Node *node = (Node *)malloc(sizeof(Node));
     node->ty = ND_NUM;
@@ -137,19 +158,22 @@ Node *primary(){
     if(tokens[pos].ty==TK_IDENT){
         Node *node = (Node*)malloc(sizeof(Node));
 
-        // 関数呼び出し
-        char cl[] = "(",cr[] = ")";
+        // 関数呼び出し or 定義
+        char cl[] = "(",cr[] = ")",bl[]="{",br[]="}";
+        // ( の判定
         if(!memcmp(tokens[pos+1].str,cl,1)){
             // IDENT and cl plus
             node->ty = ND_FUNC;
             node->str = tokens[pos].str;
             node->len = tokens[pos].len;
             pos+=2;
+            // ) の判定
             if(!memcmp(tokens[pos].str,cr,1)){
                 pos++;
                 return node;
             }
             printf("error function call\n");
+            exit(1);
         }
 
         // 変数呼び出し
@@ -327,11 +351,33 @@ Node *stmt(){
 }
 
 void program(){
-    Node *end = NULL;
-    while (!at_eof()){
-        code.push_back(stmt());
+    std::vector<Node*> code;
+    char br[] = "}";
+    while(!at_eof()){
+        if(tokens[pos].ty==TK_IDENT){
+            //関数名取得
+            LFunc *func = (LFunc*)malloc(sizeof(LFunc));
+            func->name = tokens[pos].str;
+            func->len = tokens[pos].len;
+            pos++;
+            if(consume((char*)"(")){
+                // 引数処理
+                if(consume((char*)")")){
+                    if(consume((char*)"{")){
+                        while (memcmp(br,tokens[pos].str,1)){
+                            code.push_back(stmt());
+                        }
+                        func->code = code;
+                        funcs.push_back(func);
+                        pos++;
+                        continue;
+                    }
+                }
+            }
+        }
+        printf("erro functional define\n");
     }
-    code.push_back(end);
+
 }
 
 void gen_lval(Node *node){
@@ -622,18 +668,22 @@ int main(int argc,char **argv){
     
     printf(".intel_syntax noprefix\n");
     printf(".global main\n");
-    printf("main:\n");
-
-    
-    printf("    push rbp\n");
-    printf("    mov rbp, rsp\n");
-    printf("    sub rsp, 208\n");
     
 
     // 抽象構文木を下りながらコード生成
-    for(int i=0;code[i];i++){
-        gen(code[i]);
+    for(int i=0;i<funcs.size();i++){
+        LFunc *func = funcs[i];
+        printf("%.*s:\n",func->len,func->name);
+        // なんかしらんけどgccでリンクおこなうとバグる。16進数じゃないのが原因疑惑
+        printf("    push rbp\n");
+        printf("    mov rbp, rsp\n");
+        printf("    sub rsp, 208\n");
+        for(int k=0;k<func->code.size();k++){
+            Node *code = func->code[k];
+            gen(code);
+        }
     }
+
     
 
     return 0;
