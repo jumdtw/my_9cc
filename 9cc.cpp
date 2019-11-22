@@ -73,7 +73,7 @@ struct LFunc{
     char *name;
     int len;
     // ローカル関数リスト
-    LVar *lfunc_locals;
+    std::vector<LVar*> lfunc_locals;
     // 構文木がここにはいっている
     std::vector<Node*> code;
 };
@@ -84,25 +84,26 @@ Node *stmt();
 // tokenizeの結果がここに入る
 std::vector<Token> tokens;
 // ローカル関数リスト
-LVar *locals = NULL;
+std::vector<LVar*> locals;
 // 関数リスト
 std::vector<LFunc*> funcs;
 int pos = 0;
 
 
 LVar *find_lvar(Token *tok){
-    for(LVar *var=locals;var;var=var->next){
-        if(var->len==tok->len&&!memcmp(tok->str,var->name,var->len)){
-            return var;
+    for(int i=0;i<locals.size();i++){
+        LVar *local = locals[i];
+        if(local->len==tok->len&&!memcmp(tok->str,local->name,local->len)){
+            return local;
         }
     }
     return NULL;
 }
 
-int lvar_len(LVar *func_local){
+int lvar_len(std::vector<LVar*> func_local){
     int i=0;
-    for(LVar *var=func_local;var;var=var->next){
-        i += 1;
+    for(int i=0;i<func_local.size();i++){
+        i++;
     }
     return i;
 }
@@ -194,17 +195,16 @@ Node *primary(){
         if(lvar){
             node->offset = lvar->offset;
         }else{
-            lvar = (LVar*)malloc(sizeof(LVar));
-            lvar->next = locals;
+            LVar *lvar;
             lvar->name = tokens[pos].str;
             lvar->len = tokens[pos].len;
-            if(locals==NULL){
+            if(!locals.size()){
                 lvar->offset = 8;
             }else{
-                lvar->offset = locals->offset + 8;
+                lvar->offset = locals[(locals.size()-1)]->offset + 8;
             }
             node->offset = lvar->offset;
-            locals = lvar;
+            locals.push_back(lvar);
         }
         pos++;
         return node;
@@ -376,17 +376,18 @@ void program(){
                     if(consume((char*)"{")){
                         std::vector<Node*> lcode;
                         while (memcmp(br,tokens[pos].str,1)){
+                            printf("aa\n");
                             lcode.push_back(stmt());
+                            printf("aa\n");
                         }
                         printf("aa\n");
-                        func->code.resize(lcode.size());
                         func->code = lcode;
-                        std::copy(lcode.begin(),lcode.end(),back_inserter(func->code));
                         printf("aa\n");
-                        func->lfunc_locals = (LVar*)malloc(sizeof(LVar));
                         func->lfunc_locals = locals;
-                        locals = NULL;
-                        locals = (LVar*)malloc(sizeof(LVar));
+                        //locals vector のreset
+                        std::vector<LVar*> buf;
+                        locals = buf;
+                        // -------------------------------------
                         funcs.push_back(func);
                         pos++;
                         continue;
@@ -699,7 +700,8 @@ int main(int argc,char **argv){
         // なんかしらんけどgccでリンクおこなうとバグる。16進数じゃないのが原因疑惑
         printf("    push rbp\n");
         printf("    mov rbp, rsp\n");
-        printf("    sub rsp, %d\n",lvar_len(func->lfunc_locals)*8);
+        int lvar_size = lvar_len(func->lfunc_locals);
+        printf("    sub rsp, %d\n",lvar_size*8);
         for(int k=0;k<func->code.size();k++){
             Node *code = func->code[k];
             gen(code);
@@ -709,7 +711,8 @@ int main(int argc,char **argv){
     printf("%s:\n",main_str);
     printf("    push rbp\n");
     printf("    mov rbp, rsp\n");
-    printf("    sub rsp, 208\n");
+    int lvar_size = lvar_len(main_func->lfunc_locals);
+    printf("    sub rsp, %d\n",lvar_size*8);
 
     for(int i=0;i<main_func->code.size();i++){
         gen(main_func->code[i]);
