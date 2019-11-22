@@ -23,3 +23,6 @@ add = mul ("+" mul | "-" mul)*
 mul = unary ("*" unary | "/" unary)*
 
 unary = num | ident ( "(" ")" )? | "(" expr ")"
+
+# 問題点
+毎回スタックを208減算しているのでいつかしぬ

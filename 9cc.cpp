@@ -72,6 +72,8 @@ struct LVar{
 struct LFunc{
     char *name;
     int len;
+    // ローカル関数リスト
+    LVar *lfunc_locals;
     // 構文木がここにはいっている
     std::vector<Node*> code;
 };
@@ -96,6 +98,15 @@ LVar *find_lvar(Token *tok){
     }
     return NULL;
 }
+
+int lvar_len(LVar *func_local){
+    int i=0;
+    for(LVar *var=func_local;var;var=var->next){
+        i += 1;
+    }
+    return i;
+}
+
 
 LFunc *find_func(Token *tok){
     for(int i=0;i<funcs.size();i++){
@@ -351,7 +362,6 @@ Node *stmt(){
 }
 
 void program(){
-    std::vector<Node*> code;
     char br[] = "}";
     while(!at_eof()){
         if(tokens[pos].ty==TK_IDENT){
@@ -364,10 +374,19 @@ void program(){
                 // 引数処理
                 if(consume((char*)")")){
                     if(consume((char*)"{")){
+                        std::vector<Node*> lcode;
                         while (memcmp(br,tokens[pos].str,1)){
-                            code.push_back(stmt());
+                            lcode.push_back(stmt());
                         }
-                        func->code = code;
+                        printf("aa\n");
+                        func->code.resize(lcode.size());
+                        func->code = lcode;
+                        std::copy(lcode.begin(),lcode.end(),back_inserter(func->code));
+                        printf("aa\n");
+                        func->lfunc_locals = (LVar*)malloc(sizeof(LVar));
+                        func->lfunc_locals = locals;
+                        locals = NULL;
+                        locals = (LVar*)malloc(sizeof(LVar));
                         funcs.push_back(func);
                         pos++;
                         continue;
@@ -669,22 +688,32 @@ int main(int argc,char **argv){
     printf(".intel_syntax noprefix\n");
     printf(".global main\n");
     
+    LFunc *main_func;
+    char main_str[] = "main";
 
     // 抽象構文木を下りながらコード生成
     for(int i=0;i<funcs.size();i++){
         LFunc *func = funcs[i];
+        if(!memcmp(func->name,main_str,func->len)){main_func = func;continue;}
         printf("%.*s:\n",func->len,func->name);
         // なんかしらんけどgccでリンクおこなうとバグる。16進数じゃないのが原因疑惑
         printf("    push rbp\n");
         printf("    mov rbp, rsp\n");
-        printf("    sub rsp, 208\n");
+        printf("    sub rsp, %d\n",lvar_len(func->lfunc_locals)*8);
         for(int k=0;k<func->code.size();k++){
             Node *code = func->code[k];
             gen(code);
         }
     }
 
-    
+    printf("%s:\n",main_str);
+    printf("    push rbp\n");
+    printf("    mov rbp, rsp\n");
+    printf("    sub rsp, 208\n");
 
+    for(int i=0;i<main_func->code.size();i++){
+        gen(main_func->code[i]);
+    }
+    
     return 0;
 }
