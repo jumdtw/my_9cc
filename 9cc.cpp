@@ -63,7 +63,6 @@ typedef struct {
 }Token;
 
 struct LVar{
-    LVar *next; 
     char *name; //変数名
     int len;    //name.len()
     int offset; //
@@ -72,8 +71,8 @@ struct LVar{
 struct LFunc{
     char *name;
     int len;
-    // ローカル関数リスト
-    std::vector<LVar*> lfunc_locals;
+    // ローカル変数リスト
+    std::vector<LVar*> lvar_locals;
     // 構文木がここにはいっている
     std::vector<Node*> code;
 };
@@ -98,14 +97,6 @@ LVar *find_lvar(Token *tok){
         }
     }
     return NULL;
-}
-
-int lvar_len(std::vector<LVar*> func_local){
-    int i=0;
-    for(int i=0;i<func_local.size();i++){
-        i++;
-    }
-    return i;
 }
 
 
@@ -191,22 +182,23 @@ Node *primary(){
         // 変数呼び出し
         node->ty = ND_LVAR;
         LVar *lvar = find_lvar(&tokens[pos]);
-
         if(lvar){
             node->offset = lvar->offset;
         }else{
-            LVar *lvar;
-            lvar->name = tokens[pos].str;
-            lvar->len = tokens[pos].len;
+            LVar *buf_lvar = (LVar*)malloc(sizeof(LVar));
+            buf_lvar->name = (char*)malloc(sizeof(char)*tokens[pos].len);
+            strncpy(buf_lvar->name,tokens[pos].str,tokens[pos].len);
+            buf_lvar->len = tokens[pos].len;
             if(!locals.size()){
-                lvar->offset = 8;
+                buf_lvar->offset = 8;
             }else{
-                lvar->offset = locals[(locals.size()-1)]->offset + 8;
+                buf_lvar->offset = locals[(locals.size()-1)]->offset + 8;
             }
-            node->offset = lvar->offset;
-            locals.push_back(lvar);
+            node->offset = buf_lvar->offset;
+            locals.push_back(buf_lvar);
         }
         pos++;
+        
         return node;
     }
 }
@@ -223,7 +215,7 @@ Node *unary(){
 
 Node *mul(){
     Node *node = unary();
-
+    
     for(;;){
         if(consume((char*)"*")){
             node = new_node('*',node,unary());
@@ -237,7 +229,7 @@ Node *mul(){
 
 Node *add(){
     Node *node = mul();
-
+    
     for(;;){
         if(consume((char*)"+")){
             node = new_node('+',node,mul());
@@ -252,6 +244,7 @@ Node *add(){
 
 Node *relational(){
     Node *node = add();
+    
     char setle[] = "<=",setre[] = ">=";
     for(;;){
         if(consume((char*)"<")){
@@ -291,6 +284,7 @@ Node *assign(){
     if(consume((char*)"=")){
         node = new_node(ND_ASSIGN,node,assign());
     }
+    
     return node;
 
 }
@@ -375,19 +369,16 @@ void program(){
                 if(consume((char*)")")){
                     if(consume((char*)"{")){
                         std::vector<Node*> lcode;
-                        while (memcmp(br,tokens[pos].str,1)){
-                            printf("aa\n");
+                        while (memcmp(br,tokens[pos].str,1)){                           
                             lcode.push_back(stmt());
-                            printf("aa\n");
                         }
-                        printf("aa\n");
                         func->code = lcode;
-                        printf("aa\n");
-                        func->lfunc_locals = locals;
+                        // どちらもvectorのコピー　挙動が違うので今後のために残す
+                        func->lvar_locals = locals;
+                        //std::copy(locals.begin(),locals.end(),back_inserter(func->lvar_locals));
                         //locals vector のreset
                         std::vector<LVar*> buf;
                         locals = buf;
-                        // -------------------------------------
                         funcs.push_back(func);
                         pos++;
                         continue;
@@ -700,7 +691,7 @@ int main(int argc,char **argv){
         // なんかしらんけどgccでリンクおこなうとバグる。16進数じゃないのが原因疑惑
         printf("    push rbp\n");
         printf("    mov rbp, rsp\n");
-        int lvar_size = lvar_len(func->lfunc_locals);
+        int lvar_size = func->lvar_locals.size();
         printf("    sub rsp, %d\n",lvar_size*8);
         for(int k=0;k<func->code.size();k++){
             Node *code = func->code[k];
@@ -711,7 +702,7 @@ int main(int argc,char **argv){
     printf("%s:\n",main_str);
     printf("    push rbp\n");
     printf("    mov rbp, rsp\n");
-    int lvar_size = lvar_len(main_func->lfunc_locals);
+    int lvar_size = main_func->lvar_locals.size();
     printf("    sub rsp, %d\n",lvar_size*8);
 
     for(int i=0;i<main_func->code.size();i++){
