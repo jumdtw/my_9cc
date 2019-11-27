@@ -65,6 +65,7 @@ typedef struct {
 struct LVar{
     char *name; //変数名
     int len;    //name.len()
+    int val;
     int offset; //
 };
 
@@ -146,6 +147,47 @@ void expect(char *p){
     exit(1);
 }
 
+std::vector<Node*> call_arrgument(){
+    std::vector<Node*> stmts;
+    char cr[] = ")";
+    while(memcmp(tokens[pos].str,cr,1)){
+        LVar *arrgu = find_lvar(&tokens[pos]);
+        if(arrgu){
+            // 変数だった時の処理
+            Node *buf;
+            buf->ty = ND_LVAR;
+            buf->str = arrgu->name;
+            buf->len = arrgu->len;
+            buf->offset = arrgu->offset;
+        }else{
+            // 即値だった時の処理
+            Node *buf;
+            buf->ty = ND_NUM;
+            buf->val = 1;
+        }
+        pos++;
+    }
+
+    return stmts;
+}
+
+void arrgument_input(){
+    char cr[] = ")";
+    while(memcpy(tokens[pos].str,cr,tokens[pos].len)){
+        LVar *buf_lvar = (LVar*)malloc(sizeof(LVar));
+        buf_lvar->name = (char*)malloc(sizeof(char)*tokens[pos].len);
+        strncpy(buf_lvar->name,tokens[pos].str,tokens[pos].len);
+        buf_lvar->len = tokens[pos].len;
+        if(!locals.size()){
+            buf_lvar->offset = -8;
+        }else{
+            buf_lvar->offset = locals[(locals.size()-1)]->offset - 8;
+        }
+        locals.push_back(buf_lvar);
+        pos++;
+    }
+}
+
 Node *primary(){
     if(consume((char*)"(")){
         Node *node = expr();
@@ -169,7 +211,10 @@ Node *primary(){
             node->ty = ND_FUNC;
             node->str = tokens[pos].str;
             node->len = tokens[pos].len;
-            pos+=2;
+            pos++;
+            //引数処理
+            node->stmts = call_arrgument();
+            pos++;
             // ) の判定
             if(!memcmp(tokens[pos].str,cr,1)){
                 pos++;
@@ -366,6 +411,7 @@ void program(){
             pos++;
             if(consume((char*)"(")){
                 // 引数処理
+                //arrgument_input();
                 if(consume((char*)")")){
                     if(consume((char*)"{")){
                         std::vector<Node*> lcode;
