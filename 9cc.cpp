@@ -7,13 +7,21 @@
 
 
 
+#define INT_SIZE 4
+
 enum {
     TK_NUM = 256,  //整数トークン
+    // 構文
     TK_RETURN,
     TK_IF,
     TK_ELSE,
     TK_WHILE,
-    TK_IDENT,     // 識別子
+    // 変数の型
+    TK_INT,    // int 
+    TK_DOUBLE, // double
+    TK_CHAR,   // char
+    TK_IDENT,     // 識別子　変数の名前とか
+    // 比較演算子
     TK_SETE,  // ==
     TK_SETL,  // <
     TK_SETLE, // <=
@@ -33,10 +41,15 @@ enum{
     ND_FUNC_DEFINE,
     ND_LVAR,
     ND_BLOCK,
+    ND_INT,
+    ND_DOUBLE,
+    ND_ADDR, //&
+    ND_DEREF,//* アドレス参照
     ND_SETE,  // ==
     ND_SETL,  // <
     ND_SETLE, // <=
     ND_SETNE, // !=
+    ND_NULL, // 変数宣言など特にコード生成などを必要としないノードに関してはこれを使う。
 };
 
 
@@ -64,6 +77,7 @@ typedef struct {
 
 struct LVar{
     char *name; //変数名
+    int type;  // 変数の型
     int len;    //name.len()
     int val;
     int offset; //
@@ -71,6 +85,7 @@ struct LVar{
 
 struct LFunc{
     char *name;
+    int type;  // 関数の型
     int len;
     // ローカル変数リスト
     std::vector<LVar*> lvar_locals;
@@ -139,6 +154,17 @@ bool at_eof(){
     return tokens[pos].ty == TK_EOF;
 }
 
+int check_func_type(int type){
+    switch(type){
+        case TK_INT:
+            return ND_INT;
+        case TK_DOUBLE:
+            return ND_DOUBLE;
+
+    }
+    return 0;
+}
+
 void expect(char *p){
     if(!memcmp(tokens[pos].str,p,tokens[pos].len)){
         return;
@@ -149,43 +175,39 @@ void expect(char *p){
 
 std::vector<Node*> call_arrgument(){
     std::vector<Node*> stmts;
-    char cr[] = ")";
+    char cr[] = ")",com[] = ",";
     while(memcmp(tokens[pos].str,cr,1)){
         LVar *arrgu = find_lvar(&tokens[pos]);
         if(arrgu){
             // 変数だった時の処理
             Node *buf;
+            buf = (Node*)malloc(sizeof(Node));
             buf->ty = ND_LVAR;
             buf->str = arrgu->name;
             buf->len = arrgu->len;
             buf->offset = arrgu->offset;
+            stmts.push_back(buf);
         }else{
             // 即値だった時の処理
             Node *buf;
+            buf = (Node*)malloc(sizeof(Node));
             buf->ty = ND_NUM;
-            buf->val = 1;
+            buf->val = tokens[pos].val;
+            stmts.push_back(buf);
         }
         pos++;
+        if(!memcmp(tokens[pos].str,cr,1)){
+            break;
+        }else if(!memcmp(tokens[pos].str,com,1)){
+            pos++;
+            continue;
+        }else{
+            printf("err call func arrgument\n");
+            exit(1);
+        }
     }
 
     return stmts;
-}
-
-void arrgument_input(){
-    char cr[] = ")";
-    while(memcpy(tokens[pos].str,cr,tokens[pos].len)){
-        LVar *buf_lvar = (LVar*)malloc(sizeof(LVar));
-        buf_lvar->name = (char*)malloc(sizeof(char)*tokens[pos].len);
-        strncpy(buf_lvar->name,tokens[pos].str,tokens[pos].len);
-        buf_lvar->len = tokens[pos].len;
-        if(!locals.size()){
-            buf_lvar->offset = -8;
-        }else{
-            buf_lvar->offset = locals[(locals.size()-1)]->offset - 8;
-        }
-        locals.push_back(buf_lvar);
-        pos++;
-    }
 }
 
 Node *primary(){
@@ -211,10 +233,9 @@ Node *primary(){
             node->ty = ND_FUNC;
             node->str = tokens[pos].str;
             node->len = tokens[pos].len;
-            pos++;
+            pos+=2;
             //引数処理
             node->stmts = call_arrgument();
-            pos++;
             // ) の判定
             if(!memcmp(tokens[pos].str,cr,1)){
                 pos++;
@@ -230,6 +251,7 @@ Node *primary(){
         if(lvar){
             node->offset = lvar->offset;
         }else{
+            /*
             LVar *buf_lvar = (LVar*)malloc(sizeof(LVar));
             buf_lvar->name = (char*)malloc(sizeof(char)*tokens[pos].len);
             strncpy(buf_lvar->name,tokens[pos].str,tokens[pos].len);
@@ -241,11 +263,39 @@ Node *primary(){
             }
             node->offset = buf_lvar->offset;
             locals.push_back(buf_lvar);
+            */
+           printf("not found lvar %s\n",tokens[pos].str);
+           exit(1);
         }
         pos++;
         
         return node;
     }
+
+    // 変数宣言
+    if(check_func_type(tokens[pos].ty)){
+        // 型種類処理
+        pos++;
+        // 変数登録
+        LVar *buf_lvar = (LVar*)malloc(sizeof(LVar));
+        buf_lvar->name = (char*)malloc(sizeof(char)*tokens[pos].len);
+        strncpy(buf_lvar->name,tokens[pos].str,tokens[pos].len);
+        buf_lvar->len = tokens[pos].len;
+        if(!locals.size()){
+            buf_lvar->offset = 8;
+        }else{
+            buf_lvar->offset = locals[(locals.size()-1)]->offset + 8;
+        }
+        locals.push_back(buf_lvar);
+        pos++;
+        return new_node(ND_NULL,NULL,NULL);
+    }else{
+        printf("error not found type func\n");
+        exit(1);
+    }
+
+    printf("error gen node\n");
+    exit(1);
 }
 
 Node *unary(){
@@ -253,6 +303,12 @@ Node *unary(){
         return primary();
     }
     if(consume((char*)"-")){
+        return new_node('-',new_node_num(0),primary());
+    }
+    if(consume((char*)"*")){
+        return primary();
+    }
+    if(consume((char*)"&")){
         return new_node('-',new_node_num(0),primary());
     }
     return primary();
@@ -400,39 +456,48 @@ Node *stmt(){
     return node;
 }
 
+
+
 void program(){
     char br[] = "}";
     while(!at_eof()){
-        if(tokens[pos].ty==TK_IDENT){
-            //関数名取得
+        // 関数の型処理
+        if(check_func_type(tokens[pos].ty)){
             LFunc *func = (LFunc*)malloc(sizeof(LFunc));
-            func->name = tokens[pos].str;
-            func->len = tokens[pos].len;
+            func->type = check_func_type(tokens[pos].ty);
             pos++;
-            if(consume((char*)"(")){
-                // 引数処理
-                //arrgument_input();
-                if(consume((char*)")")){
-                    if(consume((char*)"{")){
-                        std::vector<Node*> lcode;
-                        while (memcmp(br,tokens[pos].str,1)){                           
-                            lcode.push_back(stmt());
+        // 関数本体
+            if(tokens[pos].ty==TK_IDENT){
+                //関数名取得
+                func->name = tokens[pos].str;
+                func->len = tokens[pos].len;
+                pos++;
+                if(consume((char*)"(")){
+                    // 引数処理
+                    if(consume((char*)")")){
+                        if(consume((char*)"{")){
+                            std::vector<Node*> lcode;
+                            while (memcmp(br,tokens[pos].str,1)){                           
+                                lcode.push_back(stmt());
+                            }
+                            func->code = lcode;
+                            // どちらもvectorのコピー　挙動が違うので今後のために残す
+                            func->lvar_locals = locals;
+                            //std::copy(locals.begin(),locals.end(),back_inserter(func->lvar_locals));
+                            //locals vector のreset
+                            std::vector<LVar*> buf;
+                            locals = buf;
+                            funcs.push_back(func);
+                            pos++;
+                            continue;
                         }
-                        func->code = lcode;
-                        // どちらもvectorのコピー　挙動が違うので今後のために残す
-                        func->lvar_locals = locals;
-                        //std::copy(locals.begin(),locals.end(),back_inserter(func->lvar_locals));
-                        //locals vector のreset
-                        std::vector<LVar*> buf;
-                        locals = buf;
-                        funcs.push_back(func);
-                        pos++;
-                        continue;
                     }
                 }
             }
+        }else{
+            printf("erro functional define\n");
         }
-        printf("erro functional define\n");
+        
     }
 
 }
@@ -449,7 +514,25 @@ void gen_lval(Node *node){
 
 
 void gen(Node *node){
+    // なにもしない。コンパイラ上の情報を処理する時のみ使う。
+    if(node->ty==ND_NULL){
+        return;
+    }
     if(node->ty==ND_FUNC){
+        for(int i=node->stmts.size()-1;i>=0;i--){
+            Node *p = node->stmts[i];
+            if(p->ty==ND_NUM){
+                printf("    push %d\n",p->val);
+            }else if(p->ty==ND_LVAR){
+                gen_lval(p);
+                printf("    pop rax\n");
+                printf("    mov rax, [rax]\n");
+                printf("    push rax\n");
+            }else{
+                printf("err gen code call func\n");
+                exit(1);
+            }
+        }
         printf("    call _Z3%.*sv\n",node->len,node->str);
         return;
     }
@@ -632,7 +715,7 @@ void tokenize(char *p){
             continue;
         }
         
-        if(*p == '(' || *p == ')' || *p=='+' || *p=='-' || *p=='*' || *p=='/' || *p=='<' || *p=='>' || *p=='=' || *p == ';' || *p=='{' || *p=='}'){    
+        if(*p == '(' || *p == ')' || *p=='+' || *p=='-' || *p=='*' || *p=='/' || *p=='<' || *p=='>' || *p=='=' || *p == ';' || *p=='{' || *p=='}' || *p==',' || *p=='&'){    
             token.ty = *p;
             token.str = p;
             token.len = 1;
@@ -679,6 +762,15 @@ void tokenize(char *p){
             token.ty = TK_WHILE;
             token.str = p;
             p+=5;
+            tokens.push_back(token);
+            continue;
+        }
+
+        // intの判別
+        if(strncmp(p,"int",3)==0&&!is_alnum(p[3])){
+            token.ty = TK_INT;
+            token.str = p;
+            p+=3;
             tokens.push_back(token);
             continue;
         }

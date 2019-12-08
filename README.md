@@ -2,7 +2,7 @@
 
 # ebnf
 
-program = ident ( ) { stmt* }
+program = ("int" | "double" | ...) ident ( ) { stmt* }
 
 stmt =  expr ";"
      |  "{" stmt* "}"
@@ -22,7 +22,9 @@ add = mul ("+" mul | "-" mul)*
 
 mul = unary ("*" unary | "/" unary)*
 
-unary = num | ident ( "(" ")" )? | "(" expr ")"
+unary =  "+"? primary | "-"? primary | "*"? unary | "&"? unary
+
+primary = num | ("int" | "double" | ...)? ident ( "(" ")" )? | "(" expr ")"
 
 # call  関数処理
 以下のような記述がきたときの処理
