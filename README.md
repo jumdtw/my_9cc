@@ -22,9 +22,9 @@ add = mul ("+" mul | "-" mul)*
 
 mul = unary ("*" unary | "/" unary)*
 
-unary =  "+"? primary | "-"? primary | "*"? unary | "&"? unary
+unary =  ("int" | "double" | ...)? primary |"+"? primary | "-"? primary | "*"? unary | "&"? unary
 
-primary = num | ("int" | "double" | ...)? ident ( "(" ")" )? | "(" expr ")"
+primary = num |  ident ( "(" ")" )? | "(" expr ")"
 
 # call  関数処理
 以下のような記述がきたときの処理
