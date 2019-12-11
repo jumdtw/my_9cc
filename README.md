@@ -10,9 +10,9 @@ stmt =  expr ";"
      |  "while" "(" expr ")" stmt
      |  "return" expr ";"
 
-expr = assign
+expr = ("int" | "double" | ...)? assign
 
-assign = equality ("=" assign)?
+assign =  equality ("=" assign)?
 
 equality = relational ("==" relational | "!=" relational)*
 
@@ -22,7 +22,7 @@ add = mul ("+" mul | "-" mul)*
 
 mul = unary ("*" unary | "/" unary)*
 
-unary =  ("int" | "double" | ...)? primary |"+"? primary | "-"? primary | "*"? unary | "&"? unary
+unary =  |"+"? primary | "-"? primary | "*"? unary | "&"? unary
 
 primary = num |  ident ( "(" ")" )? | "(" expr ")"
 

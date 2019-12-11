@@ -49,7 +49,6 @@ enum{
     ND_SETL,  // <
     ND_SETLE, // <=
     ND_SETNE, // !=
-    ND_NULL, // 変数宣言など特にコード生成などを必要としないノードに関してはこれを使う。
 };
 
 
@@ -251,47 +250,12 @@ Node *primary(){
         if(lvar){
             node->offset = lvar->offset;
         }else{
-            /*
-            LVar *buf_lvar = (LVar*)malloc(sizeof(LVar));
-            buf_lvar->name = (char*)malloc(sizeof(char)*tokens[pos].len);
-            strncpy(buf_lvar->name,tokens[pos].str,tokens[pos].len);
-            buf_lvar->len = tokens[pos].len;
-            if(!locals.size()){
-                buf_lvar->offset = 8;
-            }else{
-                buf_lvar->offset = locals[(locals.size()-1)]->offset + 8;
-            }
-            node->offset = buf_lvar->offset;
-            locals.push_back(buf_lvar);
-            */
            printf("not found lvar %s\n",tokens[pos].str);
            exit(1);
         }
         pos++;
         
         return node;
-    }
-
-    // 変数宣言
-    if(check_func_type(tokens[pos].ty)){
-        // 型種類処理
-        pos++;
-        // 変数登録
-        LVar *buf_lvar = (LVar*)malloc(sizeof(LVar));
-        buf_lvar->name = (char*)malloc(sizeof(char)*tokens[pos].len);
-        strncpy(buf_lvar->name,tokens[pos].str,tokens[pos].len);
-        buf_lvar->len = tokens[pos].len;
-        if(!locals.size()){
-            buf_lvar->offset = 8;
-        }else{
-            buf_lvar->offset = locals[(locals.size()-1)]->offset + 8;
-        }
-        locals.push_back(buf_lvar);
-        pos++;
-        return new_node(ND_NULL,NULL,NULL);
-    }else{
-        printf("error not found type func\n");
-        exit(1);
     }
 
     printf("error gen node\n");
@@ -391,7 +355,29 @@ Node *assign(){
 }
 
 Node *expr(){
-    return assign();
+    // 変数宣言
+    if(check_func_type(tokens[pos].ty)){
+        // 型種類処理
+        pos++;
+        if(tokens[pos].ty!=TK_IDENT){
+            printf("error expr. ident tokens not found.");
+        }
+        // 変数登録
+        LVar *buf_lvar = (LVar*)malloc(sizeof(LVar));
+        buf_lvar->name = (char*)malloc(sizeof(char)*tokens[pos].len);
+        strncpy(buf_lvar->name,tokens[pos].str,tokens[pos].len);
+        buf_lvar->len = tokens[pos].len;
+        if(!locals.size()){
+            buf_lvar->offset = 8;
+        }else{
+            buf_lvar->offset = locals[(locals.size()-1)]->offset + 8;
+        }
+        locals.push_back(buf_lvar);
+        return assign();
+    }else{
+        // 変数宣言でない処理。
+        return assign();
+    }
 }
 
 
@@ -496,6 +482,7 @@ void program(){
             }
         }else{
             printf("erro functional define\n");
+            exit(1);
         }
         
     }
@@ -514,10 +501,7 @@ void gen_lval(Node *node){
 
 
 void gen(Node *node){
-    // なにもしない。コンパイラ上の情報を処理する時のみ使う。
-    if(node->ty==ND_NULL){
-        return;
-    }
+
     if(node->ty==ND_FUNC){
         for(int i=node->stmts.size()-1;i>=0;i--){
             Node *p = node->stmts[i];
